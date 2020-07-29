@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+<meta charset="UTF-8" />
+<script src="http://code.jquery.com/jquery-3.4.1.min.js"></script>
+<script src="https://ajax.googleapis.com/ajax/libs/jqueryui/1.12.1/jquery-ui.min.js"></script>
+<link rel="stylesheet" href="https://ajax.googleapis.com/ajax/libs/jqueryui/1.12.1/themes/smoothness/jquery-ui.css">
+<link href="/css/reset.css" th:href="@{/css/reset.css}" rel="stylesheet" />
+<link href="/css/style.css" th:href="@{/css/style.css}" rel="stylesheet" />
+
+<title>Ocean.com</title>
+
+<script>
+
+$(() => {
+	
+	// count:合計個数
+	let count = 0;
+	// price:価格
+	let price = $('div.container').find('td#price');
+	// subTotal:合計金額
+	let subTotal = 0;
+	// incTarget:商品が追加されたときの個数を取得
+	let incTarget = $('div.container').find('td#count');
+	
+	// カート内の商品の合計個数と合計金額をcount,subTotalに代入
+	for (let m = 0; m < incTarget.length; m++) {
+		count += Number($(incTarget[m]).text())
+		subTotal += Number($(incTarget[m]).text()) * Number($(price[m]).text());
+	}
+	
+	// 画面に出力
+	$('.totalCount').text(count);
+	$('.total').text(subTotal);
+	
+	//　初期状態の表示
+	if ($('table.cart').find('tr').length === 2) {
+		emptyCart();
+	}
+	
+	// 削除ボタンの活性化
+	switchDelBtn();
+	
+	// チェックした商品を削除ボタンを押した際に表示を消す処理
+	// コントローラーと接続してカート情報テーブルからも削除
+	$('#delete').on('click', (event) =>{
+		// form送信を制御
+		event.preventDefault();
+		
+		// 削除対象を指定(チェックされた商品)
+		let parentDiv = $(event.target).parent().parent().parent();
+		let delTarget = $(parentDiv).find('input:checked');
+			
+		// 個数、合計を操作するためのキー
+		let decTarget = $(delTarget).parent().parent().find('td#count');
+		let decTargetPrice = $(delTarget).parent().parent().find('td#price');
+		// 商品の個数を操作するため配列に格納
+		let decList = [];
+		// 商品の合計を操作するため配列に格納	    
+		let decListTotal = [];
+		
+		// チェックされた商品を削除するために情報を送信
+		// チェックされた商品の分だけ削除を繰り返す
+		for (let i = 0; i < delTarget.length; i++) {			
+			decList.push(Number($(decTarget[i]).text()));
+			decListTotal.push(Number($(decTarget[i]).text()) * Number($(decTargetPrice[i]).text()));
+			
+			$.ajax({
+				type: 'POST',
+				url: '/ocean/cart/delete',
+				data: JSON.stringify({
+					'id': $(delTarget[i]).val()
+				}),
+				contentType: 'application/json',
+				datatype: 'json',
+				scriptCharset: 'utf-8'
+			})
+			.then((result) => {
+				// 成功した場合カート画面から削除対象の商品を削除
+				$(delTarget[i]).parent().parent().remove();
+		
+				// 削除された項目の個数と合計を減算
+				count -= decList[i];
+				subTotal -= decListTotal[i];
+				
+				// 変更後の個数と合計を表示
+				$('.totalCount').text(count);
+				$('.total').text(subTotal);
+				
+				// 条件分岐(カート画面上のtrが「カラム」と「合計」のみしかない場合)
+				// 初期状態を表示
+				if ($('table.cart').find('tr').length === 2) {				
+					emptyCart();
+				}
+				
+				// 商品削除後、削除ボタンを非活性化
+				if ($('input:checked').length === 0) {
+					$('#delete').prop('disabled', true);
+				}			
+			}, () => {
+				console.log('Error: ajax connection failed.');
+			}); // ajax終了
+		} // for文終了
+	}); // delete終了
+	
+	// 未ログイン時のアラート
+	$('#add').on('click', (e) => {
+		if (isEmpty($('#hiddenUserName').val())) {
+		    e.preventDefault();
+			loginAlert();	
+		}
+	});
+});
+
+// カート内の商品の有無による表示変更関数
+const emptyCart = function() {
+	// 商品情報の有無による表示切替のフラグ
+	let emptyData = $('.noData');
+	let hasData = $('table.cart');
+	let buttonArea = $('.buttonArea');
+	
+	// 「カート情報はありません。」を表示(初期状態)
+	$(emptyData).removeClass('hidden');
+	$(hasData).addClass('hidden');	
+	$(buttonArea).addClass('hidden');
+};
+
+// 未ログイン時のアラートダイアログ表示関数
+const loginAlert = function() {
+	alert('ログインしてください。');
+}
+		
+// 削除ボタンの活性化切り替え関数
+const switchDelBtn = function() {
+	$('#delete').prop('disabled', true);	
+		$('input[type=checkbox]').change(() => {
+			if ($('input:checked').length > 0) {
+				$('#delete').prop('disabled', false);		
+			}else {
+				$('#delete').prop('disabled', true);
+			}
+		})
+}
+
+</script>
+</head>
+<body>
+
+	<header th:insert="fragments/page_header::pageHeader"></header>
+	
+	<main>
+		<div class="container cart">
+		
+			<!-- カートに商品情報がない場合表示 -->
+			
+			<div class="noData hidden">
+				<p class="info">カート情報はありません。</p>
+			</div><!-- noData -->
+			
+			<!-- カートに商品情報がない場合表示 -->
+			
+			<!-- カートに商品情報がある場合表示 -->
+			
+			<table class="cart">
+				<tr>
+					<th>選択</th><th>画像</th><th>商品名</th><th>価格(円)</th><th>個数</th><th>小計(円)</th>
+				</tr>
+				
+				<!-- DBからの情報を形成して表示する動的部分↓ -->
+				
+				<tr class="countTarget" th:each="item: ${cartList}">
+					<td>
+					 <input type="checkbox" th:value="${item.id}"/>
+					</td>
+					<td class="image">
+						<img class="itemImage" th:src="${item.imageFullPath}" alt="" />
+					</td>
+					<td th:text="${item.productName}"></td>
+					<td id="price" class="number" th:text="${item.price}"></td>
+					<td id="count" class="number" th:text="${item.productCount}"></td>
+					<td class="number" th:text="${item.total}"></td>
+				</tr>
+				
+				<!-- DBからの情報を形成して表示する動的部分↑ -->
+				
+				<tr>
+					<td class="totalArea"></td>
+					<td class="totalArea"></td>
+					<td class="totalArea">合計(円)</td>
+					<td class="totalArea"></td>
+					<td class="totalArea totalCount"></td>
+					<td class="totalArea total"></td>
+				</tr>			
+			</table><!-- cart -->
+			
+			<div class="buttonArea">
+				<form action="/ocean/settlement/" method="POST">
+					<button id="delete">削除</button>
+					<button id="add" type="submit">購入</button>
+				</form>
+			</div><!-- buttonArea -->
+			
+			<!-- カートに商品情報がある場合表示 -->
+		
+		</div><!-- container cart -->
+	</main>
+</body>
+</html>
